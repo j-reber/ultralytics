@@ -160,20 +160,21 @@ def nms_rotated(boxes, scores, threshold=0.45):
 
 
 def non_max_suppression(
-    prediction,
-    conf_thres=0.25,
-    iou_thres=0.45,
-    classes=None,
-    agnostic=False,
-    multi_label=False,
-    labels=(),
-    max_det=300,
-    nc=0,  # number of classes (optional)
-    max_time_img=0.05,
-    max_nms=30000,
-    max_wh=7680,
-    in_place=True,
-    rotated=False,
+        prediction,
+        conf_thres=0.25,
+        iou_thres=0.45,
+        classes=None,
+        agnostic=False,
+        multi_label=False,
+        full_conf=False,
+        labels=(),
+        max_det=300,
+        nc=0,  # number of classes (optional)
+        max_time_img=0.05,
+        max_nms=30000,
+        max_wh=7680,
+        in_place=True,
+        rotated=False,
 ):
     """
     Perform non-maximum suppression (NMS) on a set of boxes, with support for masks and multiple labels per box.
@@ -190,6 +191,7 @@ def non_max_suppression(
         agnostic (bool): If True, the model is agnostic to the number of classes, and all
             classes will be considered as one.
         multi_label (bool): If True, each box may have multiple labels.
+        full_conf (bool): If True returns the full confidence vector.
         labels (List[List[Union[int, float, torch.Tensor]]]): A list of lists, where each inner
             list contains the apriori labels for a given image. The list should be in the format
             output by a dataloader, with each label being a tuple of (class_index, x1, y1, x2, y2).
@@ -235,7 +237,10 @@ def non_max_suppression(
             prediction = torch.cat((xywh2xyxy(prediction[..., :4]), prediction[..., 4:]), dim=-1)  # xywh to xyxy
 
     t = time.time()
-    output = [torch.zeros((0, 6 + nm), device=prediction.device)] * bs
+    if full_conf:
+        output = [torch.zeros((0, 5 + nc + nm), device=prediction.device)] * bs
+    else:
+        output = [torch.zeros((0, 6 + nm), device=prediction.device)] * bs
     for xi, x in enumerate(prediction):  # image index, image inference
         # Apply constraints
         # x[((x[:, 2:4] < min_wh) | (x[:, 2:4] > max_wh)).any(1), 4] = 0  # width-height
@@ -296,12 +301,17 @@ def non_max_suppression(
         #     redundant = True  # require redundant detections
         #     if redundant:
         #         i = i[iou.sum(1) > 1]  # require redundancy
+        if full_conf:
+            conf_vector = cls[i]
+            first_part = x[i, :4]  # Cut output open
+            second_part = x[i, 4:]
+            output[xi] = torch.cat((first_part, conf_vector, second_part), dim=1)  # Insert the full confidence vector
+        else:
+            output[xi] = x[i]
 
-        output[xi] = x[i]
         if (time.time() - t) > time_limit:
             LOGGER.warning(f"WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded")
             break  # time limit exceeded
-
     return output
 
 
@@ -560,7 +570,7 @@ def xywhr2xyxyxyxy(x):
     )
 
     ctr = x[..., :2]
-    w, h, angle = (x[..., i : i + 1] for i in range(2, 5))
+    w, h, angle = (x[..., i: i + 1] for i in range(2, 5))
     cos_value, sin_value = cos(angle), sin(angle)
     vec1 = [w / 2 * cos_value, w / 2 * sin_value]
     vec2 = [-h / 2 * sin_value, h / 2 * cos_value]
