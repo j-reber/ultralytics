@@ -95,7 +95,7 @@ class Results(SimpleClass):
     """
 
     def __init__(
-        self, orig_img, path, names, boxes=None, masks=None, probs=None, keypoints=None, obb=None, speed=None
+            self, orig_img, path, names, boxes=None, masks=None, probs=None, keypoints=None, obb=None, speed=None
     ) -> None:
         """
         Initialize the Results class.
@@ -110,10 +110,24 @@ class Results(SimpleClass):
             keypoints (torch.tensor, optional): A 2D tensor of keypoint coordinates for each detection.
             obb (torch.tensor, optional): A 2D tensor of oriented bounding box coordinates for each detection.
         """
+
         self.orig_img = orig_img
         self.orig_shape = orig_img.shape[:2]
-        self.boxes = Boxes(boxes, self.orig_shape) if boxes is not None else None  # native size boxes
-        self.masks = Masks(masks, self.orig_shape) if masks is not None else None  # native size or imgsz masks
+        if boxes is not None:
+            if boxes.shape[1] in {6, 7}:  # Tensor does not contain full confidence
+                self.boxes = Boxes(boxes, self.orig_shape)  # native size or imgsz masks
+                self.conf = None
+            else:  # If tensor contains full confidence vectors extract that here
+                first_part = boxes[:, :4]  # First 4 elements are Box coordinates followed by confidence
+                second_part = boxes[:, 4 + len(names):]
+                self.conf = boxes[:, 4:4 + len(names)]
+
+                # Concatenate the original parts to get back the original tensor
+                self.boxes = Boxes(torch.cat((first_part, second_part), dim=1), self.orig_shape)
+        else:
+            self.boxes = None
+        # self.boxes = Boxes(boxes, self.orig_shape) if boxes is not None else None  # native size boxes
+        self.masks = Masks(masks, self.orig_shape) if masks is not None else None
         self.probs = Probs(probs) if probs is not None else None
         self.keypoints = Keypoints(keypoints, self.orig_shape) if keypoints is not None else None
         self.obb = OBB(obb, self.orig_shape) if obb is not None else None
@@ -186,23 +200,23 @@ class Results(SimpleClass):
         return Results(orig_img=self.orig_img, path=self.path, names=self.names, speed=self.speed)
 
     def plot(
-        self,
-        conf=True,
-        line_width=None,
-        font_size=None,
-        font="Arial.ttf",
-        pil=False,
-        img=None,
-        im_gpu=None,
-        kpt_radius=5,
-        kpt_line=True,
-        labels=True,
-        boxes=True,
-        masks=True,
-        probs=True,
-        show=False,
-        save=False,
-        filename=None,
+            self,
+            conf=True,
+            line_width=None,
+            font_size=None,
+            font="Arial.ttf",
+            pil=False,
+            img=None,
+            im_gpu=None,
+            kpt_radius=5,
+            kpt_line=True,
+            labels=True,
+            boxes=True,
+            masks=True,
+            probs=True,
+            show=False,
+            save=False,
+            filename=None,
     ):
         """
         Plots the detection results on an input RGB image. Accepts a numpy array (cv2) or a PIL Image.
@@ -264,11 +278,11 @@ class Results(SimpleClass):
             if im_gpu is None:
                 img = LetterBox(pred_masks.shape[1:])(image=annotator.result())
                 im_gpu = (
-                    torch.as_tensor(img, dtype=torch.float16, device=pred_masks.data.device)
-                    .permute(2, 0, 1)
-                    .flip(0)
-                    .contiguous()
-                    / 255
+                        torch.as_tensor(img, dtype=torch.float16, device=pred_masks.data.device)
+                        .permute(2, 0, 1)
+                        .flip(0)
+                        .contiguous()
+                        / 255
                 )
             idx = pred_boxes.cls if pred_boxes else range(len(pred_masks))
             annotator.masks(pred_masks.data, colors=[colors(x, True) for x in idx], im_gpu=im_gpu)
