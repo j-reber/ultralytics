@@ -238,7 +238,7 @@ def non_max_suppression(
 
     t = time.time()
     if full_conf:
-        output = [torch.zeros((0, 5 + nc + nm), device=prediction.device)] * bs
+        output = [torch.zeros((0, 6 + nc + nm), device=prediction.device)] * bs
     else:
         output = [torch.zeros((0, 6 + nm), device=prediction.device)] * bs
     for xi, x in enumerate(prediction):  # image index, image inference
