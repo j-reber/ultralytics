@@ -95,7 +95,8 @@ class Results(SimpleClass):
     """
 
     def __init__(
-            self, orig_img, path, names, boxes=None, masks=None, probs=None, keypoints=None, obb=None, speed=None
+            self, orig_img, path, names, boxes=None, masks=None, probs=None, keypoints=None, obb=None, speed=None,
+            conf=None, ious=None
     ) -> None:
         """
         Initialize the Results class.
@@ -109,24 +110,13 @@ class Results(SimpleClass):
             probs (torch.tensor, optional): A 1D tensor of probabilities of each class for classification task.
             keypoints (torch.tensor, optional): A 2D tensor of keypoint coordinates for each detection.
             obb (torch.tensor, optional): A 2D tensor of oriented bounding box coordinates for each detection.
+            conf (torch.tensor, optional): A 2D tensor of confidence scores for the predicted bounding boxes.
+            ious (torch.tensor, optional): A 2D tensor of pairwise intersection over union for each detection before nms.
         """
 
         self.orig_img = orig_img
         self.orig_shape = orig_img.shape[:2]
-        if boxes is not None:
-            if boxes.shape[1] in {6, 7}:  # Tensor does not contain full confidence
-                self.boxes = Boxes(boxes, self.orig_shape)  # native size or imgsz masks
-                self.conf = None
-            else:  # If tensor contains full confidence vectors extract that here
-                first_part = boxes[:, :4]  # First 4 elements are Box coordinates followed by confidence
-                second_part = boxes[:, 4 + len(names):]
-                self.conf = boxes[:, 4:4 + len(names)]
-
-                # Concatenate the original parts to get back the original tensor
-                self.boxes = Boxes(torch.cat((first_part, second_part), dim=1), self.orig_shape)
-        else:
-            self.boxes = None
-        # self.boxes = Boxes(boxes, self.orig_shape) if boxes is not None else None  # native size boxes
+        self.boxes = Boxes(boxes, self.orig_shape) if boxes is not None else None  # native size boxes
         self.masks = Masks(masks, self.orig_shape) if masks is not None else None
         self.probs = Probs(probs) if probs is not None else None
         self.keypoints = Keypoints(keypoints, self.orig_shape) if keypoints is not None else None
@@ -136,6 +126,8 @@ class Results(SimpleClass):
         self.path = path
         self.save_dir = None
         self._keys = "boxes", "masks", "probs", "keypoints", "obb"
+        self.conf = conf if conf is not None else None
+        self.ious = ious if ious is not None else None
 
     def __getitem__(self, idx):
         """Return a Results object for the specified index."""
