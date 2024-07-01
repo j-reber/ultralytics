@@ -31,6 +31,11 @@ class DetectionPredictor(BasePredictor):
             classes=self.args.classes,
             full_conf=self.args.full_conf,
         )
+        if self.args.full_conf:
+            preds, conf_vector, iou_vector = preds
+        else:
+            conf_vector, iou_vector = None, None
+
 
         if not isinstance(orig_imgs, list):  # input images are a torch.Tensor, not a list
             orig_imgs = ops.convert_torch2numpy_batch(orig_imgs)
@@ -40,5 +45,6 @@ class DetectionPredictor(BasePredictor):
             orig_img = orig_imgs[i]
             pred[:, :4] = ops.scale_boxes(img.shape[2:], pred[:, :4], orig_img.shape)
             img_path = self.batch[0][i]
-            results.append(Results(orig_img, path=img_path, names=self.model.names, boxes=pred))
+            results.append(Results(orig_img, path=img_path, names=self.model.names, boxes=pred, conf=conf_vector,
+                                   ious=iou_vector))
         return results
