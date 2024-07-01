@@ -11,7 +11,7 @@ import torch
 import torch.nn.functional as F
 
 from ultralytics.utils import LOGGER
-from ultralytics.utils.metrics import batch_probiou
+from ultralytics.utils.metrics import batch_probiou, box_iou
 
 
 class Profile(contextlib.ContextDecorator):
@@ -237,10 +237,8 @@ def non_max_suppression(
             prediction = torch.cat((xywh2xyxy(prediction[..., :4]), prediction[..., 4:]), dim=-1)  # xywh to xyxy
 
     t = time.time()
-    if full_conf:
-        output = [torch.zeros((0, 6 + nc + nm), device=prediction.device)] * bs
-    else:
-        output = [torch.zeros((0, 6 + nm), device=prediction.device)] * bs
+
+    output = [torch.zeros((0, 6 + nm), device=prediction.device)] * bs
     for xi, x in enumerate(prediction):  # image index, image inference
         # Apply constraints
         # x[((x[:, 2:4] < min_wh) | (x[:, 2:4] > max_wh)).any(1), 4] = 0  # width-height
@@ -260,6 +258,11 @@ def non_max_suppression(
 
         # Detections matrix nx6 (xyxy, conf, cls)
         box, cls, mask = x.split((4, nc, nm), 1)
+
+        pairwise_iou = box_iou(box, box)
+        pairwise_iou = 1 - pairwise_iou
+        # Set IOU to 0 if below thresh
+        pairwise_iou = torch.where(pairwise_iou > iou_thres, torch.tensor(0.0), pairwise_iou)
 
         if multi_label:
             i, j = torch.where(cls > conf_thres)
@@ -301,13 +304,12 @@ def non_max_suppression(
         #     redundant = True  # require redundant detections
         #     if redundant:
         #         i = i[iou.sum(1) > 1]  # require redundancy
+        output[xi] = x[i]
+
         if full_conf:
             conf_vector = cls[i]
-            first_part = x[i, :4]  # Cut output open
-            second_part = x[i, 4:]
-            output[xi] = torch.cat((first_part, conf_vector, second_part), dim=1)  # Insert the full confidence vector
-        else:
-            output[xi] = x[i]
+            iou = pairwise_iou[i]
+            return output, conf_vector, iou
 
         if (time.time() - t) > time_limit:
             LOGGER.warning(f"WARNING ⚠️ NMS time limit {time_limit:.3f}s exceeded")
