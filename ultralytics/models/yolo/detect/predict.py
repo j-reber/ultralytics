@@ -31,11 +31,10 @@ class DetectionPredictor(BasePredictor):
             classes=self.args.classes,
             full_conf=self.args.full_conf,
         )
-        if self.args.full_conf:
+        if isinstance(preds, tuple):
             preds, conf_vector, iou_vector = preds
         else:
             conf_vector, iou_vector = None, None
-
 
         if not isinstance(orig_imgs, list):  # input images are a torch.Tensor, not a list
             orig_imgs = ops.convert_torch2numpy_batch(orig_imgs)
