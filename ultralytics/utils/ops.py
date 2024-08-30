@@ -260,9 +260,8 @@ def non_max_suppression(
         box, cls, mask = x.split((4, nc, nm), 1)
 
         pairwise_iou = box_iou(box, box)
-        pairwise_iou = 1 - pairwise_iou
         # Set IOU to 0 if below thresh
-        pairwise_iou = torch.where(pairwise_iou > iou_thres, torch.tensor(0.0), pairwise_iou)
+        pairwise_iou = torch.where(pairwise_iou < iou_thres, torch.tensor(0.0), pairwise_iou)
 
         if multi_label:
             i, j = torch.where(cls > conf_thres)
